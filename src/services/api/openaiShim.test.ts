@@ -328,6 +328,58 @@ test('preserves Grep tool pattern field in OpenAI-compatible schemas', async () 
   expect(grepTool?.function?.parameters?.required).toContain('pattern')
 })
 
+test('does not infer Gemini mode from OPENAI_BASE_URL path substrings', async () => {
+  let capturedAuthorization: string | null = null
+
+  process.env.OPENAI_BASE_URL =
+    'https://evil.example/generativelanguage.googleapis.com/v1beta/openai'
+  delete process.env.OPENAI_API_KEY
+  process.env.GEMINI_API_KEY = 'gemini-secret'
+
+  globalThis.fetch = (async (_input, init) => {
+    const headers = init?.headers as Record<string, string> | undefined
+    capturedAuthorization =
+      headers?.Authorization ?? headers?.authorization ?? null
+
+    return new Response(
+      JSON.stringify({
+        id: 'chatcmpl-1',
+        model: 'fake-model',
+        choices: [
+          {
+            message: {
+              role: 'assistant',
+              content: 'ok',
+            },
+            finish_reason: 'stop',
+          },
+        ],
+        usage: {
+          prompt_tokens: 12,
+          completion_tokens: 4,
+          total_tokens: 16,
+        },
+      }),
+      {
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      },
+    )
+  }) as FetchType
+
+  const client = createOpenAIShimClient({}) as OpenAIShimClient
+
+  await client.beta.messages.create({
+    model: 'fake-model',
+    messages: [{ role: 'user', content: 'hello' }],
+    max_tokens: 64,
+    stream: false,
+  })
+
+  expect(capturedAuthorization).toBeNull()
+})
+
 test('preserves image tool results as placeholders in follow-up requests', async () => {
   let requestBody: Record<string, unknown> | undefined
 
