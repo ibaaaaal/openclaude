@@ -1,6 +1,7 @@
 import { afterEach, expect, mock, test } from 'bun:test'
+import path from 'path'
 
-import { wrapRipgrepUnavailableError, ripgrepCommand } from './ripgrep.ts'
+import { wrapRipgrepUnavailableError } from './ripgrep.ts'
 
 const originalEnv = {
   USE_BUILTIN_RIPGREP: process.env.USE_BUILTIN_RIPGREP,
@@ -16,10 +17,15 @@ afterEach(() => {
   mock.restore()
 })
 
-const MOCK_BUILTIN_PATH =
+const MOCK_BUILTIN_PATH = path.normalize(
   process.platform === 'win32'
     ? `vendor/ripgrep/${process.arch}-win32/rg.exe`
-    : `vendor/ripgrep/${process.arch}-${process.platform}/rg`
+    : `vendor/ripgrep/${process.arch}-${process.platform}/rg`,
+)
+
+function normalizePathForMatch(target: string): string {
+  return path.normalize(target)
+}
 
 function loadFsModule() {
   return import('fs')
@@ -43,7 +49,9 @@ async function withMockedRipgrepConfig(options: {
   mock.module('fs', () => ({
     ...fsModule,
     existsSync: (target: string) =>
-      target.includes(MOCK_BUILTIN_PATH) ? options.builtinExists : fsModule.existsSync(target),
+      normalizePathForMatch(target).includes(MOCK_BUILTIN_PATH)
+        ? options.builtinExists
+        : fsModule.existsSync(target),
   }))
 
   mock.module('./findExecutable.js', () => ({
