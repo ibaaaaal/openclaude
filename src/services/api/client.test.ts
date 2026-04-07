@@ -28,6 +28,14 @@ const originalEnv = {
   ANTHROPIC_CUSTOM_HEADERS: process.env.ANTHROPIC_CUSTOM_HEADERS,
 }
 
+function restoreEnv(key: string, value: string | undefined): void {
+  if (value === undefined) {
+    delete process.env[key]
+  } else {
+    process.env[key] = value
+  }
+}
+
 beforeEach(() => {
   ;(globalThis as Record<string, unknown>).MACRO = { VERSION: 'test-version' }
   process.env.CLAUDE_CODE_USE_GEMINI = '1'
@@ -47,18 +55,18 @@ beforeEach(() => {
 
 afterEach(() => {
   ;(globalThis as Record<string, unknown>).MACRO = originalMacro
-  process.env.CLAUDE_CODE_USE_OPENAI = originalEnv.CLAUDE_CODE_USE_OPENAI
-  process.env.CLAUDE_CODE_USE_GEMINI = originalEnv.CLAUDE_CODE_USE_GEMINI
-  process.env.GEMINI_API_KEY = originalEnv.GEMINI_API_KEY
-  process.env.GEMINI_MODEL = originalEnv.GEMINI_MODEL
-  process.env.GEMINI_BASE_URL = originalEnv.GEMINI_BASE_URL
-  process.env.GOOGLE_API_KEY = originalEnv.GOOGLE_API_KEY
-  process.env.OPENAI_API_KEY = originalEnv.OPENAI_API_KEY
-  process.env.OPENAI_BASE_URL = originalEnv.OPENAI_BASE_URL
-  process.env.OPENAI_MODEL = originalEnv.OPENAI_MODEL
-  process.env.ANTHROPIC_API_KEY = originalEnv.ANTHROPIC_API_KEY
-  process.env.ANTHROPIC_AUTH_TOKEN = originalEnv.ANTHROPIC_AUTH_TOKEN
-  process.env.ANTHROPIC_CUSTOM_HEADERS = originalEnv.ANTHROPIC_CUSTOM_HEADERS
+  restoreEnv('CLAUDE_CODE_USE_OPENAI', originalEnv.CLAUDE_CODE_USE_OPENAI)
+  restoreEnv('CLAUDE_CODE_USE_GEMINI', originalEnv.CLAUDE_CODE_USE_GEMINI)
+  restoreEnv('GEMINI_API_KEY', originalEnv.GEMINI_API_KEY)
+  restoreEnv('GEMINI_MODEL', originalEnv.GEMINI_MODEL)
+  restoreEnv('GEMINI_BASE_URL', originalEnv.GEMINI_BASE_URL)
+  restoreEnv('GOOGLE_API_KEY', originalEnv.GOOGLE_API_KEY)
+  restoreEnv('OPENAI_API_KEY', originalEnv.OPENAI_API_KEY)
+  restoreEnv('OPENAI_BASE_URL', originalEnv.OPENAI_BASE_URL)
+  restoreEnv('OPENAI_MODEL', originalEnv.OPENAI_MODEL)
+  restoreEnv('ANTHROPIC_API_KEY', originalEnv.ANTHROPIC_API_KEY)
+  restoreEnv('ANTHROPIC_AUTH_TOKEN', originalEnv.ANTHROPIC_AUTH_TOKEN)
+  restoreEnv('ANTHROPIC_CUSTOM_HEADERS', originalEnv.ANTHROPIC_CUSTOM_HEADERS)
   globalThis.fetch = originalFetch
 })
 
