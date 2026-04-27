@@ -10,6 +10,13 @@ import { getLocalOpenAICompatibleProviderLabel } from '../utils/providerDiscover
 import { getSettings_DEPRECATED } from '../utils/settings/settings.js'
 import { parseUserSpecifiedModel } from '../utils/model/model.js'
 import { containsExactZaiGlmModelId, isZaiBaseUrl } from '../utils/zaiProvider.js'
+import {
+  convertEffortValueToLevel,
+  modelUsesOpenAIEffort,
+  parseEffortValue,
+  resolveAppliedEffort,
+  standardEffortToOpenAI,
+} from '../utils/effort.js'
 
 declare const MACRO: { VERSION: string; DISPLAY_VERSION?: string }
 
@@ -84,7 +91,8 @@ const LOGO_CLAUDE = [
 
 // ─── Provider detection ───────────────────────────────────────────────────────
 
-export function detectProvider(modelOverride?: string): { name: string; model: string; baseUrl: string; isLocal: boolean } {
+export function detectProvider(modelOverride?: string, effortOverride?: string): { name: string; model: string; baseUrl: string; isLocal: boolean } {
+  const settings = getSettings_DEPRECATED() || {}
   const useGemini = process.env.CLAUDE_CODE_USE_GEMINI === '1' || process.env.CLAUDE_CODE_USE_GEMINI === 'true'
   const useGithub = process.env.CLAUDE_CODE_USE_GITHUB === '1' || process.env.CLAUDE_CODE_USE_GITHUB === 'true'
   const useOpenAI = process.env.CLAUDE_CODE_USE_OPENAI === '1' || process.env.CLAUDE_CODE_USE_OPENAI === 'true'
@@ -157,17 +165,31 @@ export function detectProvider(modelOverride?: string): { name: string; model: s
     else if (/bankr/i.test(rawModel)) name = 'Bankr'
     else if (isLocal) name = getLocalOpenAICompatibleProviderLabel(baseUrl)
     
-    // Resolve model alias to actual model name + reasoning effort
+    // Resolve model alias to actual model name + active reasoning effort.
+    // Alias defaults are only a fallback; user /effort settings override the
+    // actual Codex/OpenAI request.
     let displayModel = resolvedRequest.resolvedModel
-    if (resolvedRequest.reasoning?.effort) {
-      displayModel = `${displayModel} (${resolvedRequest.reasoning.effort})`
+    let displayEffort = resolvedRequest.reasoning?.effort
+    const requestedEffort =
+      parseEffortValue(effortOverride) ?? parseEffortValue(settings.effortLevel)
+    const appliedEffort = resolveAppliedEffort(
+      resolvedRequest.resolvedModel,
+      requestedEffort,
+    )
+    if (appliedEffort !== undefined) {
+      const level = convertEffortValueToLevel(appliedEffort)
+      displayEffort = modelUsesOpenAIEffort(resolvedRequest.resolvedModel)
+        ? standardEffortToOpenAI(level)
+        : level
+    }
+    if (displayEffort) {
+      displayModel = `${displayModel} (${displayEffort})`
     }
     
     return { name, model: displayModel, baseUrl, isLocal }
   }
 
   // Default: Anthropic - check settings.model first, then env vars
-  const settings = getSettings_DEPRECATED() || {}
   const modelSetting = modelOverride || settings.model || process.env.ANTHROPIC_MODEL || process.env.CLAUDE_MODEL || 'claude-sonnet-4-6'
   const resolvedModel = parseUserSpecifiedModel(modelSetting)
   const baseUrl = process.env.ANTHROPIC_BASE_URL ?? 'https://api.anthropic.com'
@@ -184,11 +206,11 @@ function boxRow(content: string, width: number, rawLen: number): string {
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
-export function printStartupScreen(modelOverride?: string): void {
+export function printStartupScreen(modelOverride?: string, effortOverride?: string): void {
   // Skip in non-interactive / CI / print mode
   if (process.env.CI || !process.stdout.isTTY) return
 
-  const p = detectProvider(modelOverride)
+  const p = detectProvider(modelOverride, effortOverride)
   const W = 62
   const out: string[] = []
 

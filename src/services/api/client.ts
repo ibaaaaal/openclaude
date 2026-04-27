@@ -28,11 +28,33 @@ import {
   getVertexRegionForModel,
   isEnvTruthy,
 } from '../../utils/envUtils.js'
+import {
+  convertEffortValueToLevel,
+  standardEffortToOpenAI,
+  type EffortValue,
+} from '../../utils/effort.js'
+import { supportsCodexReasoningEffort } from './providerConfig.js'
 
 const importRuntimeModule = new Function(
   'specifier',
   'return import(specifier)',
 ) as (specifier: string) => Promise<any>
+
+function resolveOpenAIShimReasoningEffort(
+  model: string | undefined,
+  effortValue: EffortValue | undefined,
+): 'low' | 'medium' | 'high' | 'xhigh' | undefined {
+  const provider = getAPIProvider()
+  if (
+    effortValue === undefined ||
+    model === undefined ||
+    (provider !== 'openai' && provider !== 'codex') ||
+    !supportsCodexReasoningEffort(model)
+  ) {
+    return undefined
+  }
+  return standardEffortToOpenAI(convertEffortValueToLevel(effortValue))
+}
 
 /**
  * Environment variables for different client types:
@@ -97,6 +119,7 @@ export async function getAnthropicClient({
   fetchOverride,
   source,
   providerOverride,
+  effortValue,
 }: {
   apiKey?: string
   maxRetries: number
@@ -104,6 +127,7 @@ export async function getAnthropicClient({
   fetchOverride?: ClientOptions['fetch']
   source?: string
   providerOverride?: { model: string; baseURL: string; apiKey: string }
+  effortValue?: EffortValue
 }): Promise<Anthropic> {
   const containerId = process.env.CLAUDE_CODE_CONTAINER_ID
   const remoteSessionId = process.env.CLAUDE_CODE_REMOTE_SESSION_ID
@@ -172,6 +196,7 @@ export async function getAnthropicClient({
       defaultHeaders: safeHeaders,
       maxRetries,
       timeout: parseInt(process.env.API_TIMEOUT_MS || String(600 * 1000), 10),
+      reasoningEffort: resolveOpenAIShimReasoningEffort(providerOverride.model, effortValue),
       providerOverride,
     }) as unknown as Anthropic
   }
@@ -205,6 +230,7 @@ export async function getAnthropicClient({
       defaultHeaders,
       maxRetries,
       timeout: parseInt(process.env.API_TIMEOUT_MS || String(600 * 1000), 10),
+      reasoningEffort: resolveOpenAIShimReasoningEffort(model, effortValue),
     }) as unknown as Anthropic
   }
   if (isEnvTruthy(process.env.CLAUDE_CODE_USE_BEDROCK)) {

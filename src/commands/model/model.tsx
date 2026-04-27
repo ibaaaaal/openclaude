@@ -8,7 +8,7 @@ import { fetchBootstrapData } from '../../services/api/bootstrap.js';
 import { type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS, logEvent } from '../../services/analytics/index.js';
 import { useAppState, useSetAppState } from '../../state/AppState.js';
 import type { LocalJSXCommandCall } from '../../types/command.js';
-import type { EffortLevel } from '../../utils/effort.js';
+import { type EffortLevel, type EffortValue, getEffortLevelForDisplay } from '../../utils/effort.js';
 import { isBilledAsExtraUsage } from '../../utils/extraUsage.js';
 import { clearFastModeCooldown, isFastModeAvailable, isFastModeEnabled, isFastModeSupportedByModel } from '../../utils/fastMode.js';
 import { MODEL_ALIASES } from '../../utils/model/aliases.js';
@@ -17,7 +17,7 @@ import type { ModelOption } from '../../utils/model/modelOptions.js';
 import { discoverOpenAICompatibleModelOptions } from '../../utils/model/openaiModelDiscovery.js';
 import { getAPIProvider } from '../../utils/model/providers.js';
 import { getActiveOpenAIModelOptionsCache, setActiveOpenAIModelOptionsCache } from '../../utils/providerProfiles.js';
-import { getDefaultMainLoopModelSetting, isOpus1mMergeEnabled, renderDefaultModelSetting } from '../../utils/model/model.js';
+import { getDefaultMainLoopModel, getDefaultMainLoopModelSetting, isOpus1mMergeEnabled, renderDefaultModelSetting } from '../../utils/model/model.js';
 import { isModelAllowed } from '../../utils/model/modelAllowlist.js';
 import { validateModel } from '../../utils/model/validateModel.js';
 import { getAdditionalModelOptionsCacheScope } from '../../services/api/providerConfig.js';
@@ -63,7 +63,7 @@ function ModelPickerWrapper(t0) {
       }));
       let message = `Set model to ${chalk.bold(renderModelLabel(model))}`;
       if (effort !== undefined) {
-        message = message + ` with ${chalk.bold(effort)} effort`;
+        message = message + ` with ${chalk.bold(renderEffortLabel(model, effort))} effort`;
       }
       let wasFastModeToggledOn = undefined;
       if (isFastModeEnabled()) {
@@ -257,7 +257,7 @@ function ShowModelAndClose(t0) {
   const mainLoopModelForSession = useAppState(_temp8);
   const effortValue = useAppState(_temp9);
   const displayModel = renderModelLabel(mainLoopModel);
-  const effortInfo = effortValue !== undefined ? ` (effort: ${effortValue})` : "";
+  const effortInfo = effortValue !== undefined ? ` (effort: ${renderEffortLabel(mainLoopModel, effortValue)})` : "";
   if (mainLoopModelForSession) {
     onDone(`Current model: ${chalk.bold(renderModelLabel(mainLoopModelForSession))} (session override from plan mode)\nBase model: ${displayModel}${effortInfo}`);
   } else {
@@ -329,4 +329,10 @@ export const call: LocalJSXCommandCall = async (onDone, _context, args) => {
 function renderModelLabel(model: string | null): string {
   const rendered = renderDefaultModelSetting(model ?? getDefaultMainLoopModelSetting());
   return model === null ? `${rendered} (default)` : rendered;
+}
+export function renderEffortLabel(model: string | null, effort: EffortValue): string {
+  if (typeof effort !== 'string') {
+    return String(effort);
+  }
+  return getEffortLevelForDisplay(model ?? getDefaultMainLoopModel(), effort);
 }

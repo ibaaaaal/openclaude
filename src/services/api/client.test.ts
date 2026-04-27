@@ -24,6 +24,9 @@ const originalEnv = {
   OPENAI_API_KEY: process.env.OPENAI_API_KEY,
   OPENAI_BASE_URL: process.env.OPENAI_BASE_URL,
   OPENAI_MODEL: process.env.OPENAI_MODEL,
+  CODEX_API_KEY: process.env.CODEX_API_KEY,
+  CHATGPT_ACCOUNT_ID: process.env.CHATGPT_ACCOUNT_ID,
+  CODEX_ACCOUNT_ID: process.env.CODEX_ACCOUNT_ID,
   ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
   ANTHROPIC_AUTH_TOKEN: process.env.ANTHROPIC_AUTH_TOKEN,
   ANTHROPIC_CUSTOM_HEADERS: process.env.ANTHROPIC_CUSTOM_HEADERS,
@@ -50,6 +53,9 @@ beforeEach(() => {
   delete process.env.OPENAI_API_KEY
   delete process.env.OPENAI_BASE_URL
   delete process.env.OPENAI_MODEL
+  delete process.env.CODEX_API_KEY
+  delete process.env.CHATGPT_ACCOUNT_ID
+  delete process.env.CODEX_ACCOUNT_ID
   delete process.env.ANTHROPIC_API_KEY
   delete process.env.ANTHROPIC_AUTH_TOKEN
   delete process.env.ANTHROPIC_CUSTOM_HEADERS
@@ -67,6 +73,9 @@ afterEach(() => {
   restoreEnv('OPENAI_API_KEY', originalEnv.OPENAI_API_KEY)
   restoreEnv('OPENAI_BASE_URL', originalEnv.OPENAI_BASE_URL)
   restoreEnv('OPENAI_MODEL', originalEnv.OPENAI_MODEL)
+  restoreEnv('CODEX_API_KEY', originalEnv.CODEX_API_KEY)
+  restoreEnv('CHATGPT_ACCOUNT_ID', originalEnv.CHATGPT_ACCOUNT_ID)
+  restoreEnv('CODEX_ACCOUNT_ID', originalEnv.CODEX_ACCOUNT_ID)
   restoreEnv('ANTHROPIC_API_KEY', originalEnv.ANTHROPIC_API_KEY)
   restoreEnv('ANTHROPIC_AUTH_TOKEN', originalEnv.ANTHROPIC_AUTH_TOKEN)
   restoreEnv('ANTHROPIC_CUSTOM_HEADERS', originalEnv.ANTHROPIC_CUSTOM_HEADERS)
@@ -135,6 +144,58 @@ test('routes Gemini provider requests through the OpenAI-compatible shim', async
     role: 'assistant',
     model: 'gemini-2.0-flash',
   })
+})
+
+test('passes persisted max effort to Codex as xhigh reasoning', async () => {
+  delete process.env.CLAUDE_CODE_USE_GEMINI
+  delete process.env.GEMINI_API_KEY
+  delete process.env.GEMINI_MODEL
+  delete process.env.GEMINI_BASE_URL
+  process.env.CLAUDE_CODE_USE_OPENAI = '1'
+  process.env.OPENAI_BASE_URL = 'https://chatgpt.com/backend-api/codex'
+  process.env.OPENAI_MODEL = 'codexplan'
+  process.env.CODEX_API_KEY = 'codex-test-key'
+  process.env.CHATGPT_ACCOUNT_ID = 'acct-test'
+
+  let capturedUrl: string | undefined
+  let capturedHeaders: Headers | undefined
+  let capturedBody: Record<string, unknown> | undefined
+
+  globalThis.fetch = (async (input, init) => {
+    capturedUrl =
+      typeof input === 'string'
+        ? input
+        : input instanceof URL
+          ? input.toString()
+          : input.url
+    capturedHeaders = new Headers(init?.headers)
+    capturedBody = JSON.parse(String(init?.body)) as Record<string, unknown>
+
+    return new Response('', {
+      headers: {
+        'Content-Type': 'text/event-stream',
+      },
+    })
+  }) as FetchType
+
+  const client = (await getAnthropicClient({
+    maxRetries: 0,
+    model: 'codexplan',
+    effortValue: 'max',
+  })) as unknown as ShimClient
+
+  await client.beta.messages.create({
+    model: 'codexplan',
+    system: 'test system',
+    messages: [{ role: 'user', content: 'hello' }],
+    max_tokens: 64,
+    stream: true,
+  })
+
+  expect(capturedUrl).toBe('https://chatgpt.com/backend-api/codex/responses')
+  expect(capturedHeaders?.get('authorization')).toBe('Bearer codex-test-key')
+  expect(capturedHeaders?.get('chatgpt-account-id')).toBe('acct-test')
+  expect(capturedBody?.reasoning).toEqual({ effort: 'xhigh' })
 })
 
 test('strips Anthropic-specific custom headers before sending OpenAI-compatible shim requests', async () => {

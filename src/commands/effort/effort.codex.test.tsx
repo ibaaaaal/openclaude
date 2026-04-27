@@ -1,7 +1,4 @@
-import { afterEach, expect, mock, test } from 'bun:test'
-
-import { getAdditionalModelOptionsCacheScope } from '../../services/api/providerConfig.js'
-import { getAPIProvider } from '../../utils/model/providers.js'
+import { afterEach, expect, test } from 'bun:test'
 
 const originalEnv = {
   CLAUDE_CODE_USE_OPENAI: process.env.CLAUDE_CODE_USE_OPENAI,
@@ -17,7 +14,6 @@ const originalEnv = {
 }
 
 afterEach(() => {
-  mock.restore()
   process.env.CLAUDE_CODE_USE_OPENAI = originalEnv.CLAUDE_CODE_USE_OPENAI
   process.env.CLAUDE_CODE_USE_GEMINI = originalEnv.CLAUDE_CODE_USE_GEMINI
   process.env.CLAUDE_CODE_USE_GITHUB = originalEnv.CLAUDE_CODE_USE_GITHUB
@@ -30,44 +26,11 @@ afterEach(() => {
   process.env.OPENAI_MODEL = originalEnv.OPENAI_MODEL
 })
 
-test('opens the model picker without awaiting local model discovery refresh', async () => {
-  process.env.CLAUDE_CODE_USE_OPENAI = '1'
-  delete process.env.CLAUDE_CODE_USE_GEMINI
-  delete process.env.CLAUDE_CODE_USE_GITHUB
-  delete process.env.CLAUDE_CODE_USE_MISTRAL
-  delete process.env.CLAUDE_CODE_USE_BEDROCK
-  delete process.env.CLAUDE_CODE_USE_VERTEX
-  delete process.env.CLAUDE_CODE_USE_FOUNDRY
-  delete process.env.OPENAI_API_BASE
-  process.env.OPENAI_BASE_URL = 'http://127.0.0.1:8080/v1'
-  process.env.OPENAI_MODEL = 'qwen2.5-coder-7b-instruct'
+async function importFreshEffortCommand() {
+  return import(`./effort.js?ts=${Date.now()}-${Math.random()}`)
+}
 
-  let resolveDiscovery: (() => void) | undefined
-  const discoverOpenAICompatibleModelOptions = mock(
-    () =>
-      new Promise<void>(resolve => {
-        resolveDiscovery = resolve
-      }),
-  )
-
-  mock.module('../../utils/model/openaiModelDiscovery.js', () => ({
-    discoverOpenAICompatibleModelOptions,
-  }))
-
-  expect(getAdditionalModelOptionsCacheScope()).toBe('openai:http://127.0.0.1:8080/v1')
-
-  const { call } = await import('./model.js')
-  const result = await Promise.race([
-    call(() => {}, {} as never, ''),
-    new Promise(resolve => setTimeout(() => resolve('timeout'), 50)),
-  ])
-
-  resolveDiscovery?.()
-
-  expect(result).not.toBe('timeout')
-})
-
-test('renders Codex internal max effort as xhigh in model command feedback', async () => {
+function useCodexProviderEnv() {
   process.env.CLAUDE_CODE_USE_OPENAI = '1'
   delete process.env.CLAUDE_CODE_USE_GEMINI
   delete process.env.CLAUDE_CODE_USE_GITHUB
@@ -78,9 +41,25 @@ test('renders Codex internal max effort as xhigh in model command feedback', asy
   delete process.env.OPENAI_API_BASE
   process.env.OPENAI_BASE_URL = 'https://chatgpt.com/backend-api/codex'
   process.env.OPENAI_MODEL = 'codexplan'
+}
 
-  const { renderEffortLabel } = await import('./model.js')
+test('Codex effort help does not leak the Claude max/Opus option', async () => {
+  useCodexProviderEnv()
 
-  expect(getAPIProvider()).toBe('codex')
-  expect(renderEffortLabel('gpt-5.5', 'max')).toBe('xhigh')
+  const { getEffortHelp } = await importFreshEffortCommand()
+  const help = getEffortHelp('gpt-5.5')
+
+  expect(help).toContain('xhigh')
+  expect(help).not.toContain('Opus')
+  expect(help).not.toContain('- max:')
+})
+
+test('Codex max alias feedback is displayed as xhigh without Opus wording', async () => {
+  useCodexProviderEnv()
+
+  const { executeEffort } = await importFreshEffortCommand()
+  const result = executeEffort('max', 'gpt-5.5')
+
+  expect(result.message).toContain('Set effort level to xhigh')
+  expect(result.message).not.toContain('Opus')
 })

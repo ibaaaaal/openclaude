@@ -4,12 +4,16 @@ import { useMainLoopModel } from '../hooks/useMainLoopModel.js'
 import { useAppState, useSetAppState } from '../state/AppState.js'
 import type { EffortLevel } from '../utils/effort.js'
 import {
+  convertEffortValueToLevel,
   getAvailableEffortLevels,
   getDisplayedEffortLevel,
   getEffortLevelDescription,
   getEffortLevelLabel,
+  isOpenAIEffortLevel,
   modelSupportsEffort,
   modelUsesOpenAIEffort,
+  openAIEffortToStandard,
+  standardEffortToOpenAI,
 } from '../utils/effort.js'
 import { getAPIProvider } from '../utils/model/providers.js'
 import { getReasoningEffortForModel } from '../services/api/providerConfig.js'
@@ -56,13 +60,13 @@ export function EffortPicker({ onSelect, onCancel }: Props) {
       return {
         label: (
           <EffortOptionLabel
-            level={level as EffortLevel}
-            text={getEffortLevelLabel(level as EffortLevel)}
+            level={(level === 'xhigh' ? 'max' : level) as EffortLevel}
+            text={getEffortLevelLabel(level)}
             isCurrent={isCurrent}
           />
         ),
         value: level,
-        description: getEffortLevelDescription(level as EffortLevel),
+        description: getEffortLevelDescription(level),
         isAvailable: true,
       }
     }),
@@ -76,7 +80,9 @@ export function EffortPicker({ onSelect, onCancel }: Props) {
       }))
       onSelect(undefined)
     } else {
-      const effortLevel = value as EffortLevel
+      const effortLevel = usesOpenAIEffort && isOpenAIEffortLevel(value)
+        ? openAIEffortToStandard(value)
+        : value as EffortLevel
       setAppState(prev => ({
         ...prev,
         effortValue: effortLevel,
@@ -93,7 +99,9 @@ export function EffortPicker({ onSelect, onCancel }: Props) {
   // For OpenAI/Codex, use the model's default reasoning effort as initial focus
   // For Claude, use the displayed effort level or 'auto'
   const initialFocus = usesOpenAIEffort
-    ? (modelReasoningEffort || 'auto')
+    ? (appStateEffort !== undefined
+      ? standardEffortToOpenAI(convertEffortValueToLevel(appStateEffort))
+      : modelReasoningEffort || 'auto')
     : (appStateEffort ? String(appStateEffort) : 'auto')
 
   return (

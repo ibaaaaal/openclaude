@@ -137,10 +137,11 @@ async function main(): Promise<void> {
   // Parse --model early so the startup screen can display the override
   const { eagerParseCliFlag } = await import('../utils/cliArgs.js')
   const earlyModelFlag = eagerParseCliFlag('--model')
+  const earlyEffortFlag = eagerParseCliFlag('--effort')
 
   // Print the gradient startup screen before the Ink UI loads
   const { printStartupScreen } = await import('../components/StartupScreen.js')
-  printStartupScreen(earlyModelFlag)
+  printStartupScreen(earlyModelFlag, earlyEffortFlag)
 
   // For all other paths, load the startup profiler
   const {
