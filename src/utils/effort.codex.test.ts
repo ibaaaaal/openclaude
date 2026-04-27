@@ -61,6 +61,17 @@ test('xhigh parses and persists as the internal max level for Codex', async () =
   expect(toPersistableEffort(parsed)).toBe('max')
 })
 
+test('CLI effort parser accepts xhigh before startup parsing', async () => {
+  const { parseCliEffortLevel, parseEffortValue } =
+    await importFreshEffortModule({
+      provider: 'codex',
+    })
+
+  const parsed = parseCliEffortLevel('xhigh')
+  expect(parsed).toBe('xhigh')
+  expect(parseEffortValue(parsed)).toBe('max')
+})
+
 test('Codex xhigh stored as max is not downgraded to high', async () => {
   const { resolveAppliedEffort } = await importFreshEffortModule({
     provider: 'codex',

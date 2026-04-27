@@ -28,6 +28,23 @@ export const OPENAI_EFFORT_LEVELS = [
 export type OpenAIEffortLevel = typeof OPENAI_EFFORT_LEVELS[number]
 export type EffortValue = EffortLevel | number
 
+export const CLI_EFFORT_LEVELS = [
+  'low',
+  'medium',
+  'high',
+  'max',
+  'xhigh',
+] as const satisfies readonly (EffortLevel | OpenAIEffortLevel)[]
+
+export type CliEffortLevel = typeof CLI_EFFORT_LEVELS[number]
+
+export function parseCliEffortLevel(value: string): CliEffortLevel | undefined {
+  const normalized = value.toLowerCase()
+  return (CLI_EFFORT_LEVELS as readonly string[]).includes(normalized)
+    ? (normalized as CliEffortLevel)
+    : undefined
+}
+
 // @[MODEL LAUNCH]: Add the new model to the allowlist if it supports the effort parameter.
 export function modelSupportsEffort(model: string): boolean {
   const m = model.toLowerCase()

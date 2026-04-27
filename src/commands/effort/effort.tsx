@@ -4,7 +4,7 @@ import { useMainLoopModel } from '../../hooks/useMainLoopModel.js';
 import { type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS, logEvent } from '../../services/analytics/index.js';
 import { useAppState, useSetAppState } from '../../state/AppState.js';
 import type { LocalJSXCommandOnDone } from '../../types/command.js';
-import { type EffortValue, getDisplayedEffortLevel, getEffortEnvOverride, getEffortLevelDescription, getEffortLevelForDisplay, getEffortValueDescription, isEffortLevel, isOpenAIEffortLevel, modelUsesOpenAIEffort, openAIEffortToStandard, toPersistableEffort } from '../../utils/effort.js';
+import { type EffortValue, getAvailableEffortLevels, getDisplayedEffortLevel, getEffortEnvOverride, getEffortLevelDescription, getEffortLevelForDisplay, getEffortValueDescription, isEffortLevel, isOpenAIEffortLevel, modelSupportsEffort, modelUsesOpenAIEffort, openAIEffortToStandard, toPersistableEffort } from '../../utils/effort.js';
 import { EffortPicker } from '../../components/EffortPicker.js';
 import { updateSettingsForSource } from '../../utils/settings/settings.js';
 const COMMON_HELP_ARGS = ['help', '-h', '--help'];
@@ -113,6 +113,17 @@ export function executeEffort(args: string, model?: string): EffortCommandResult
   if (normalized === 'auto' || normalized === 'unset') {
     return unsetEffortLevel();
   }
+  const recognized = isEffortLevel(normalized) || isOpenAIEffortLevel(normalized);
+  if (model !== undefined && !modelSupportsEffort(model)) {
+    return {
+      message: `Effort not supported for ${model}`
+    };
+  }
+  if (model !== undefined && recognized && !isRequestedEffortAvailable(normalized, model)) {
+    return {
+      message: `Invalid argument: ${args}. Valid options are: ${getValidEffortOptions(model).join(', ')}`
+    };
+  }
   if (isEffortLevel(normalized)) {
     return setEffortValue(normalized, undefined, model);
   }
@@ -160,16 +171,41 @@ function ApplyEffortAndClose({
   return null;
 }
 function getValidEffortOptions(model?: string): string[] {
+  if (model !== undefined) {
+    const levels = getAvailableEffortLevels(model).map(String);
+    return levels.length > 0 ? [...levels, 'auto'] : ['auto'];
+  }
   return modelUsesOpenAIEffort(model ?? '')
     ? ['low', 'medium', 'high', 'xhigh', 'auto']
     : ['low', 'medium', 'high', 'max', 'auto'];
 }
+function isRequestedEffortAvailable(value: string, model: string): boolean {
+  const levels = getAvailableEffortLevels(model).map(String);
+  if (levels.includes(value)) {
+    return true;
+  }
+  // Codex/OpenAI store xhigh internally as max, so keep /effort max working
+  // as an alias when the model exposes xhigh.
+  return value === 'max' && levels.includes('xhigh');
+}
 export function getEffortHelp(model?: string): string {
-  const usesOpenAIEffort = modelUsesOpenAIEffort(model ?? '');
-  const providerSpecificLine = usesOpenAIEffort
-    ? '- xhigh: Extra high reasoning effort for OpenAI/Codex'
-    : '- max: Maximum capability with deepest reasoning (Opus 4.6 only)';
-  return `Usage: /effort [${getValidEffortOptions(model).join('|')}]\n\nEffort levels:\n- low: Quick, straightforward implementation\n- medium: Balanced approach with standard testing\n- high: Comprehensive implementation with extensive testing\n${providerSpecificLine}\n- auto: Use the default effort level for your model`;
+  const validOptions = getValidEffortOptions(model);
+  if (model !== undefined && !modelSupportsEffort(model)) {
+    return `Usage: /effort [${validOptions.join('|')}]\n\nEffort not supported for ${model}\n- auto: Use the default effort level for your model`;
+  }
+
+  const levelLines = [
+    '- low: Quick, straightforward implementation',
+    '- medium: Balanced approach with standard testing',
+    '- high: Comprehensive implementation with extensive testing',
+  ];
+  if (validOptions.includes('max')) {
+    levelLines.push('- max: Maximum capability with deepest reasoning (Opus 4.6 only)');
+  }
+  if (validOptions.includes('xhigh')) {
+    levelLines.push('- xhigh: Extra high reasoning effort for OpenAI/Codex');
+  }
+  return `Usage: /effort [${validOptions.join('|')}]\n\nEffort levels:\n${levelLines.join('\n')}\n- auto: Use the default effort level for your model`;
 }
 export async function call(onDone: LocalJSXCommandOnDone, _context: unknown, args?: string): Promise<React.ReactNode> {
   args = args?.trim() || '';

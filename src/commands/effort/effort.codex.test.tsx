@@ -63,3 +63,15 @@ test('Codex max alias feedback is displayed as xhigh without Opus wording', asyn
   expect(result.message).toContain('Set effort level to xhigh')
   expect(result.message).not.toContain('Opus')
 })
+
+test('Codex models without reasoning effort reject xhigh instead of silently storing it', async () => {
+  useCodexProviderEnv()
+
+  const { executeEffort, getEffortHelp } = await importFreshEffortCommand()
+  const result = executeEffort('xhigh', 'gpt-5.3-codex-spark')
+
+  expect(result.message).toBe('Effort not supported for gpt-5.3-codex-spark')
+  expect(result.effortUpdate).toBeUndefined()
+  expect(getEffortHelp('gpt-5.3-codex-spark')).toContain('Usage: /effort [auto]')
+  expect(getEffortHelp('gpt-5.3-codex-spark')).not.toContain('xhigh')
+})
