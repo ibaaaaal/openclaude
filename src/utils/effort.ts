@@ -28,6 +28,23 @@ export const OPENAI_EFFORT_LEVELS = [
 export type OpenAIEffortLevel = typeof OPENAI_EFFORT_LEVELS[number]
 export type EffortValue = EffortLevel | number
 
+export const CLI_EFFORT_LEVELS = [
+  'low',
+  'medium',
+  'high',
+  'max',
+  'xhigh',
+] as const satisfies readonly (EffortLevel | OpenAIEffortLevel)[]
+
+export type CliEffortLevel = typeof CLI_EFFORT_LEVELS[number]
+
+export function parseCliEffortLevel(value: string): CliEffortLevel | undefined {
+  const normalized = value.toLowerCase()
+  return (CLI_EFFORT_LEVELS as readonly string[]).includes(normalized)
+    ? (normalized as CliEffortLevel)
+    : undefined
+}
+
 // @[MODEL LAUNCH]: Add the new model to the allowlist if it supports the effort parameter.
 export function modelSupportsEffort(model: string): boolean {
   const m = model.toLowerCase()
@@ -134,6 +151,9 @@ export function parseEffortValue(value: unknown): EffortValue | undefined {
   if (isEffortLevel(str)) {
     return str
   }
+  if (isOpenAIEffortLevel(str)) {
+    return openAIEffortToStandard(str)
+  }
   const numericValue = parseInt(str, 10)
   if (!isNaN(numericValue) && isValidNumericEffort(numericValue)) {
     return numericValue
@@ -214,8 +234,19 @@ export function resolveAppliedEffort(
   }
   const resolved =
     envOverride ?? appStateEffortValue ?? getDefaultEffortForModel(model)
-  // API rejects 'max' on non-Opus-4.6 models — downgrade to 'high'.
-  if (resolved === 'max' && !modelSupportsMaxEffort(model)) {
+  if (
+    modelUsesOpenAIEffort(model) &&
+    !supportsCodexReasoningEffort(model)
+  ) {
+    return undefined
+  }
+  // Anthropic rejects 'max' on non-Opus-4.6 models. OpenAI/Codex use the
+  // persisted 'max' value as their internal representation of wire 'xhigh'.
+  if (
+    resolved === 'max' &&
+    !modelSupportsMaxEffort(model) &&
+    !modelUsesOpenAIEffort(model)
+  ) {
     return 'high'
   }
   return resolved
@@ -234,11 +265,23 @@ export function getDisplayedEffortLevel(
   return convertEffortValueToLevel(resolved)
 }
 
+export function getEffortLevelForDisplay(
+  model: string,
+  level: EffortLevel,
+): EffortLevel | OpenAIEffortLevel {
+  return modelUsesOpenAIEffort(model) &&
+    supportsCodexReasoningEffort(model) &&
+    level === 'max'
+    ? 'xhigh'
+    : level
+}
+
 /**
  * Build the ` with {level} effort` suffix shown in Logo/Spinner.
  * Returns empty string if the user hasn't explicitly set an effort value.
  * Delegates to resolveAppliedEffort() so the displayed level matches what
- * the API actually receives (including max→high clamp for non-Opus models).
+ * the API actually receives (including the Anthropic max-to-high clamp for
+ * non-Opus models).
  */
 export function getEffortSuffix(
   model: string,
@@ -247,7 +290,8 @@ export function getEffortSuffix(
   if (effortValue === undefined) return ''
   const resolved = resolveAppliedEffort(model, effortValue)
   if (resolved === undefined) return ''
-  return ` with ${convertEffortValueToLevel(resolved)} effort`
+  const level = convertEffortValueToLevel(resolved)
+  return ` with ${getEffortLevelForDisplay(model, level)} effort`
 }
 
 export function isValidNumericEffort(value: number): boolean {

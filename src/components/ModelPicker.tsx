@@ -1,5 +1,4 @@
 import { c as _c } from "react-compiler-runtime";
-import capitalize from 'lodash-es/capitalize.js';
 import * as React from 'react';
 import { useCallback, useMemo, useState } from 'react';
 import { useExitOnCtrlCDWithKeybindings } from 'src/hooks/useExitOnCtrlCDWithKeybindings.js';
@@ -8,7 +7,7 @@ import { FAST_MODE_MODEL_DISPLAY, isFastModeAvailable, isFastModeCooldown, isFas
 import { Box, Text } from '../ink.js';
 import { useKeybindings } from '../keybindings/useKeybinding.js';
 import { useAppState, useSetAppState } from '../state/AppState.js';
-import { convertEffortValueToLevel, type EffortLevel, getDefaultEffortForModel, modelSupportsEffort, modelSupportsMaxEffort, resolvePickerEffortPersistence, toPersistableEffort } from '../utils/effort.js';
+import { convertEffortValueToLevel, type EffortLevel, getDefaultEffortForModel, getEffortLevelForDisplay, getEffortLevelLabel, modelSupportsEffort, modelSupportsMaxEffort, modelUsesOpenAIEffort, resolvePickerEffortPersistence, toPersistableEffort } from '../utils/effort.js';
 import { getDefaultMainLoopModel, type ModelSetting, modelDisplayString, parseUserSpecifiedModel } from '../utils/model/model.js';
 import { getModelOptions } from '../utils/model/modelOptions.js';
 import { getSettingsForSource, updateSettingsForSource } from '../utils/settings/settings.js';
@@ -149,7 +148,8 @@ export function ModelPicker(t0) {
   if ($[20] !== focusedValue) {
     const focusedModel = resolveOptionModel(focusedValue);
     focusedSupportsEffort = focusedModel ? modelSupportsEffort(focusedModel) : false;
-    t8 = focusedModel ? modelSupportsMaxEffort(focusedModel) : false;
+    // OpenAI/Codex use internal `max` as the persisted representation of wire `xhigh`.
+    t8 = focusedModel ? modelSupportsMaxEffort(focusedModel) || modelUsesOpenAIEffort(focusedModel) : false;
     $[20] = focusedValue;
     $[21] = focusedSupportsEffort;
     $[22] = t8;
@@ -167,7 +167,11 @@ export function ModelPicker(t0) {
     t9 = $[24];
   }
   const focusedDefaultEffort = t9;
-  const displayEffort = effort === "max" && !focusedSupportsMax ? "high" : effort;
+  const displayEffortLevel = effort === "max" && !focusedSupportsMax ? "high" : effort ?? focusedDefaultEffort;
+  const focusedModelForDisplay = resolveOptionModel(focusedValue) ?? getDefaultMainLoopModel();
+  const displayEffortLabel = getEffortLevelForDisplay(focusedModelForDisplay, displayEffortLevel);
+  const displayEffortText = getEffortLevelLabel(displayEffortLabel);
+  const displayEffortCacheKey = `${displayEffortLevel}:${displayEffortText}`;
   let t10;
   if ($[25] !== effortValue || $[26] !== hasToggledEffort) {
     t10 = value => {
@@ -324,9 +328,9 @@ export function ModelPicker(t0) {
     t23 = $[61];
   }
   let t24;
-  if ($[62] !== displayEffort || $[63] !== focusedDefaultEffort || $[64] !== focusedModelName || $[65] !== focusedSupportsEffort) {
-    t24 = <Box marginBottom={1} flexDirection="column">{focusedSupportsEffort ? <Text dimColor={true}><EffortLevelIndicator effort={displayEffort} />{" "}{capitalize(displayEffort)} effort{displayEffort === focusedDefaultEffort ? " (default)" : ""}{" "}<Text color="subtle">← → to adjust</Text></Text> : <Text color="subtle"><EffortLevelIndicator effort={undefined} /> Effort not supported{focusedModelName ? ` for ${focusedModelName}` : ""}</Text>}</Box>;
-    $[62] = displayEffort;
+  if ($[62] !== displayEffortCacheKey || $[63] !== focusedDefaultEffort || $[64] !== focusedModelName || $[65] !== focusedSupportsEffort) {
+    t24 = <Box marginBottom={1} flexDirection="column">{focusedSupportsEffort ? <Text dimColor={true}><EffortLevelIndicator effort={displayEffortLevel} />{" "}{displayEffortText} effort{displayEffortLevel === focusedDefaultEffort ? " (default)" : ""}{" "}<Text color="subtle">← → to adjust</Text></Text> : <Text color="subtle"><EffortLevelIndicator effort={undefined} /> Effort not supported{focusedModelName ? ` for ${focusedModelName}` : ""}</Text>}</Box>;
+    $[62] = displayEffortCacheKey;
     $[63] = focusedDefaultEffort;
     $[64] = focusedModelName;
     $[65] = focusedSupportsEffort;

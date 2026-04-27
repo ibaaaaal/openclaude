@@ -4,7 +4,7 @@ import { useMainLoopModel } from '../../hooks/useMainLoopModel.js';
 import { type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS, logEvent } from '../../services/analytics/index.js';
 import { useAppState, useSetAppState } from '../../state/AppState.js';
 import type { LocalJSXCommandOnDone } from '../../types/command.js';
-import { type EffortValue, getDisplayedEffortLevel, getEffortEnvOverride, getEffortValueDescription, isEffortLevel, isOpenAIEffortLevel, modelUsesOpenAIEffort, toPersistableEffort } from '../../utils/effort.js';
+import { type EffortValue, getAvailableEffortLevels, getDisplayedEffortLevel, getEffortEnvOverride, getEffortLevelDescription, getEffortLevelForDisplay, getEffortValueDescription, isEffortLevel, isOpenAIEffortLevel, modelSupportsEffort, modelUsesOpenAIEffort, openAIEffortToStandard, toPersistableEffort } from '../../utils/effort.js';
 import { EffortPicker } from '../../components/EffortPicker.js';
 import { updateSettingsForSource } from '../../utils/settings/settings.js';
 const COMMON_HELP_ARGS = ['help', '-h', '--help'];
@@ -14,8 +14,9 @@ type EffortCommandResult = {
     value: EffortValue | undefined;
   };
 };
-function setEffortValue(effortValue: EffortValue): EffortCommandResult {
+function setEffortValue(effortValue: EffortValue, displayValue?: string, model?: string): EffortCommandResult {
   const persistable = toPersistableEffort(effortValue);
+  const requestedValue = displayValue ?? (model && typeof effortValue === 'string' ? String(getEffortLevelForDisplay(model, effortValue)) : String(effortValue));
   if (persistable !== undefined) {
     const result = updateSettingsForSource('userSettings', {
       effortLevel: persistable
@@ -38,23 +39,23 @@ function setEffortValue(effortValue: EffortValue): EffortCommandResult {
     const envRaw = process.env.CLAUDE_CODE_EFFORT_LEVEL;
     if (persistable === undefined) {
       return {
-        message: `Not applied: CLAUDE_CODE_EFFORT_LEVEL=${envRaw} overrides effort this session, and ${effortValue} is session-only (nothing saved)`,
+        message: `Not applied: CLAUDE_CODE_EFFORT_LEVEL=${envRaw} overrides effort this session, and ${requestedValue} is session-only (nothing saved)`,
         effortUpdate: {
           value: effortValue
         }
       };
     }
     return {
-      message: `CLAUDE_CODE_EFFORT_LEVEL=${envRaw} overrides this session — clear it and ${effortValue} takes over`,
+      message: `CLAUDE_CODE_EFFORT_LEVEL=${envRaw} overrides this session — clear it and ${requestedValue} takes over`,
       effortUpdate: {
         value: effortValue
       }
     };
   }
-  const description = getEffortValueDescription(effortValue);
+  const description = requestedValue === 'xhigh' ? getEffortLevelDescription('xhigh') : getEffortValueDescription(effortValue);
   const suffix = persistable !== undefined ? '' : ' (this session only)';
   return {
-    message: `Set effort level to ${effortValue}${suffix}: ${description}`,
+    message: `Set effort level to ${requestedValue}${suffix}: ${description}`,
     effortUpdate: {
       value: effortValue
     }
@@ -65,13 +66,15 @@ export function showCurrentEffort(appStateEffort: EffortValue | undefined, model
   const effectiveValue = envOverride === null ? undefined : envOverride ?? appStateEffort;
   if (effectiveValue === undefined) {
     const level = getDisplayedEffortLevel(model, appStateEffort);
+    const displayLevel = getEffortLevelForDisplay(model, level);
     return {
-      message: `Effort level: auto (currently ${level})`
+      message: `Effort level: auto (currently ${displayLevel})`
     };
   }
-  const description = getEffortValueDescription(effectiveValue);
+  const displayValue = typeof effectiveValue === 'string' ? getEffortLevelForDisplay(model, effectiveValue) : effectiveValue;
+  const description = displayValue === 'xhigh' ? getEffortLevelDescription('xhigh') : getEffortValueDescription(effectiveValue);
   return {
-    message: `Current effort level: ${effectiveValue} (${description})`
+    message: `Current effort level: ${displayValue} (${description})`
   };
 }
 function unsetEffortLevel(): EffortCommandResult {
@@ -105,19 +108,30 @@ function unsetEffortLevel(): EffortCommandResult {
     }
   };
 }
-export function executeEffort(args: string): EffortCommandResult {
+export function executeEffort(args: string, model?: string): EffortCommandResult {
   const normalized = args.toLowerCase();
   if (normalized === 'auto' || normalized === 'unset') {
     return unsetEffortLevel();
   }
+  const recognized = isEffortLevel(normalized) || isOpenAIEffortLevel(normalized);
+  if (model !== undefined && !modelSupportsEffort(model)) {
+    return {
+      message: `Effort not supported for ${model}`
+    };
+  }
+  if (model !== undefined && recognized && !isRequestedEffortAvailable(normalized, model)) {
+    return {
+      message: `Invalid argument: ${args}. Valid options are: ${getValidEffortOptions(model).join(', ')}`
+    };
+  }
   if (isEffortLevel(normalized)) {
-    return setEffortValue(normalized);
+    return setEffortValue(normalized, undefined, model);
   }
   if (isOpenAIEffortLevel(normalized)) {
-    return setEffortValue(normalized);
+    return setEffortValue(openAIEffortToStandard(normalized), normalized, model);
   }
   return {
-    message: `Invalid argument: ${args}. Valid options are: low, medium, high, max, xhigh, auto`
+    message: `Invalid argument: ${args}. Valid options are: ${getValidEffortOptions(model).join(', ')}`
   };
 }
 function ShowCurrentEffort(t0) {
@@ -135,47 +149,68 @@ function ShowCurrentEffort(t0) {
 function _temp(s) {
   return s.effortValue;
 }
-function ApplyEffortAndClose(t0) {
-  const $ = _c(6);
-  const {
-    result,
-    onDone
-  } = t0;
+function ApplyEffortAndClose({
+  args,
+  onDone
+}: {
+  args: string;
+  onDone: LocalJSXCommandOnDone;
+}) {
   const setAppState = useSetAppState();
-  const {
-    effortUpdate,
-    message
-  } = result;
-  let t1;
-  let t2;
-  if ($[0] !== effortUpdate || $[1] !== message || $[2] !== onDone || $[3] !== setAppState) {
-    t1 = () => {
-      if (effortUpdate) {
-        setAppState(prev => ({
-          ...prev,
-          effortValue: effortUpdate.value
-        }));
-      }
-      onDone(message);
-    };
-    t2 = [setAppState, effortUpdate, message, onDone];
-    $[0] = effortUpdate;
-    $[1] = message;
-    $[2] = onDone;
-    $[3] = setAppState;
-    $[4] = t1;
-    $[5] = t2;
-  } else {
-    t1 = $[4];
-    t2 = $[5];
-  }
-  React.useEffect(t1, t2);
+  const model = useMainLoopModel();
+  React.useEffect(() => {
+    const result = executeEffort(args, model);
+    if (result.effortUpdate) {
+      setAppState(prev => ({
+        ...prev,
+        effortValue: result.effortUpdate?.value
+      }));
+    }
+    onDone(result.message);
+  }, [args, model, onDone, setAppState]);
   return null;
+}
+function getValidEffortOptions(model?: string): string[] {
+  if (model !== undefined) {
+    const levels = getAvailableEffortLevels(model).map(String);
+    return levels.length > 0 ? [...levels, 'auto'] : ['auto'];
+  }
+  return modelUsesOpenAIEffort(model ?? '')
+    ? ['low', 'medium', 'high', 'xhigh', 'auto']
+    : ['low', 'medium', 'high', 'max', 'auto'];
+}
+function isRequestedEffortAvailable(value: string, model: string): boolean {
+  const levels = getAvailableEffortLevels(model).map(String);
+  if (levels.includes(value)) {
+    return true;
+  }
+  // Codex/OpenAI store xhigh internally as max, so keep /effort max working
+  // as an alias when the model exposes xhigh.
+  return value === 'max' && levels.includes('xhigh');
+}
+export function getEffortHelp(model?: string): string {
+  const validOptions = getValidEffortOptions(model);
+  if (model !== undefined && !modelSupportsEffort(model)) {
+    return `Usage: /effort [${validOptions.join('|')}]\n\nEffort not supported for ${model}\n- auto: Use the default effort level for your model`;
+  }
+
+  const levelLines = [
+    '- low: Quick, straightforward implementation',
+    '- medium: Balanced approach with standard testing',
+    '- high: Comprehensive implementation with extensive testing',
+  ];
+  if (validOptions.includes('max')) {
+    levelLines.push('- max: Maximum capability with deepest reasoning (Opus 4.6 only)');
+  }
+  if (validOptions.includes('xhigh')) {
+    levelLines.push('- xhigh: Extra high reasoning effort for OpenAI/Codex');
+  }
+  return `Usage: /effort [${validOptions.join('|')}]\n\nEffort levels:\n${levelLines.join('\n')}\n- auto: Use the default effort level for your model`;
 }
 export async function call(onDone: LocalJSXCommandOnDone, _context: unknown, args?: string): Promise<React.ReactNode> {
   args = args?.trim() || '';
   if (COMMON_HELP_ARGS.includes(args)) {
-    onDone('Usage: /effort [low|medium|high|max|auto]\n\nEffort levels:\n- low: Quick, straightforward implementation\n- medium: Balanced approach with standard testing\n- high: Comprehensive implementation with extensive testing\n- max: Maximum capability with deepest reasoning (Opus 4.6 only)\n- auto: Use the default effort level for your model');
+    onDone(getEffortHelp());
     return;
   }
   if (args === 'current' || args === 'status') {
@@ -184,14 +219,12 @@ export async function call(onDone: LocalJSXCommandOnDone, _context: unknown, arg
   if (!args) {
     return <EffortPickerWrapper onDone={onDone} />;
   }
-  const result = executeEffort(args);
-  return <ApplyEffortAndClose result={result} onDone={onDone} />;
+  return <ApplyEffortAndClose args={args} onDone={onDone} />;
 }
 
 function EffortPickerWrapper({ onDone }: { onDone: LocalJSXCommandOnDone }) {
   const setAppState = useSetAppState();
   const model = useMainLoopModel();
-  const usesOpenAIEffort = modelUsesOpenAIEffort(model);
 
   function handleSelect(effort: EffortValue | undefined) {
     const persistable = toPersistableEffort(effort);
@@ -207,9 +240,10 @@ function EffortPickerWrapper({ onDone }: { onDone: LocalJSXCommandOnDone }) {
       ...prev,
       effortValue: effort
     }));
-    const description = effort ? getEffortValueDescription(effort) : 'Use default effort level for your model';
+    const displayEffort = effort && typeof effort === 'string' ? getEffortLevelForDisplay(model, effort) : effort;
+    const description = displayEffort === 'xhigh' ? getEffortLevelDescription('xhigh') : effort ? getEffortValueDescription(effort) : 'Use default effort level for your model';
     const suffix = persistable !== undefined ? '' : ' (this session only)';
-    onDone(`Set effort level to ${effort ?? 'auto'}${suffix}: ${description}`);
+    onDone(`Set effort level to ${displayEffort ?? 'auto'}${suffix}: ${description}`);
   }
 
   function handleCancel() {
