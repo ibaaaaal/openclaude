@@ -198,6 +198,47 @@ test('passes persisted max effort to Codex as xhigh reasoning', async () => {
   expect(capturedBody?.reasoning).toEqual({ effort: 'xhigh' })
 })
 
+test('does not send reasoning for Codex models without reasoning support', async () => {
+  delete process.env.CLAUDE_CODE_USE_GEMINI
+  delete process.env.GEMINI_API_KEY
+  delete process.env.GEMINI_MODEL
+  delete process.env.GEMINI_BASE_URL
+  process.env.CLAUDE_CODE_USE_OPENAI = '1'
+  process.env.OPENAI_BASE_URL = 'https://chatgpt.com/backend-api/codex'
+  process.env.OPENAI_MODEL = 'codexspark'
+  process.env.CODEX_API_KEY = 'codex-test-key'
+  process.env.CHATGPT_ACCOUNT_ID = 'acct-test'
+
+  let capturedBody: Record<string, unknown> | undefined
+
+  globalThis.fetch = (async (_input, init) => {
+    capturedBody = JSON.parse(String(init?.body)) as Record<string, unknown>
+
+    return new Response('', {
+      headers: {
+        'Content-Type': 'text/event-stream',
+      },
+    })
+  }) as FetchType
+
+  const client = (await getAnthropicClient({
+    maxRetries: 0,
+    model: 'codexspark',
+    effortValue: 'max',
+  })) as unknown as ShimClient
+
+  await client.beta.messages.create({
+    model: 'codexspark',
+    system: 'test system',
+    messages: [{ role: 'user', content: 'hello' }],
+    max_tokens: 64,
+    stream: true,
+  })
+
+  expect(capturedBody?.model).toBe('gpt-5.3-codex-spark')
+  expect(capturedBody).not.toHaveProperty('reasoning')
+})
+
 test('strips Anthropic-specific custom headers before sending OpenAI-compatible shim requests', async () => {
   let capturedHeaders: Headers | undefined
 

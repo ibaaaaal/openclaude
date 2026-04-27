@@ -93,6 +93,18 @@ describe('Codex provider config', () => {
     expect(resolved.baseUrl).toBe('https://chatgpt.com/backend-api/codex')
   })
 
+  test('accepts reasoning=max as a Codex xhigh alias in model query', async () => {
+    const { resolveProviderRequest } = await importFreshProviderConfigModule()
+    delete process.env.OPENAI_BASE_URL
+    delete process.env.OPENAI_API_BASE
+    delete process.env.CLAUDE_CODE_USE_GITHUB
+
+    const resolved = resolveProviderRequest({ model: 'codexplan?reasoning=max' })
+    expect(resolved.transport).toBe('codex_responses')
+    expect(resolved.resolvedModel).toBe('gpt-5.5')
+    expect(resolved.reasoning).toEqual({ effort: 'xhigh' })
+  })
+
   test('resolves codexspark alias to Codex transport with Codex base URL', async () => {
     const { resolveProviderRequest } = await importFreshProviderConfigModule()
     delete process.env.OPENAI_BASE_URL
@@ -103,6 +115,18 @@ describe('Codex provider config', () => {
     expect(resolved.transport).toBe('codex_responses')
     expect(resolved.resolvedModel).toBe('gpt-5.3-codex-spark')
     expect(resolved.baseUrl).toBe('https://chatgpt.com/backend-api/codex')
+  })
+
+  test('ignores reasoning query for Codex models without reasoning support', async () => {
+    const { resolveProviderRequest } = await importFreshProviderConfigModule()
+    delete process.env.OPENAI_BASE_URL
+    delete process.env.OPENAI_API_BASE
+    delete process.env.CLAUDE_CODE_USE_GITHUB
+
+    const resolved = resolveProviderRequest({ model: 'codexspark?reasoning=xhigh' })
+    expect(resolved.transport).toBe('codex_responses')
+    expect(resolved.resolvedModel).toBe('gpt-5.3-codex-spark')
+    expect(resolved.reasoning).toBeUndefined()
   })
 
   test('does not force Codex transport when a local non-Codex base URL is explicit', async () => {

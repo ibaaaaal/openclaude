@@ -80,6 +80,38 @@ test('Codex xhigh stored as max is not downgraded to high', async () => {
   expect(resolveAppliedEffort('gpt-5.4', 'max')).toBe('max')
 })
 
+test('Codex models without reasoning support do not display stored xhigh', async () => {
+  const {
+    getDisplayedEffortLevel,
+    getEffortLevelForDisplay,
+    resolveAppliedEffort,
+  } = await importFreshEffortModule({
+    provider: 'codex',
+  })
+
+  expect(resolveAppliedEffort('gpt-5.3-codex-spark', 'max')).toBeUndefined()
+  expect(getDisplayedEffortLevel('gpt-5.3-codex-spark', 'max')).toBe('high')
+  expect(getEffortLevelForDisplay('gpt-5.3-codex-spark', 'max')).toBe('max')
+})
+
+test('Codex models without reasoning support ignore xhigh env overrides', async () => {
+  const original = process.env.CLAUDE_CODE_EFFORT_LEVEL
+  process.env.CLAUDE_CODE_EFFORT_LEVEL = 'xhigh'
+  try {
+    const { resolveAppliedEffort } = await importFreshEffortModule({
+      provider: 'codex',
+    })
+
+    expect(resolveAppliedEffort('gpt-5.3-codex-spark', undefined)).toBeUndefined()
+  } finally {
+    if (original === undefined) {
+      delete process.env.CLAUDE_CODE_EFFORT_LEVEL
+    } else {
+      process.env.CLAUDE_CODE_EFFORT_LEVEL = original
+    }
+  }
+})
+
 test('gpt-5.3-codex-spark stays without effort controls', async () => {
   const { getAvailableEffortLevels, modelSupportsEffort } =
     await importFreshEffortModule({

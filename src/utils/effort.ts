@@ -234,6 +234,12 @@ export function resolveAppliedEffort(
   }
   const resolved =
     envOverride ?? appStateEffortValue ?? getDefaultEffortForModel(model)
+  if (
+    modelUsesOpenAIEffort(model) &&
+    !supportsCodexReasoningEffort(model)
+  ) {
+    return undefined
+  }
   // Anthropic rejects 'max' on non-Opus-4.6 models. OpenAI/Codex use the
   // persisted 'max' value as their internal representation of wire 'xhigh'.
   if (
@@ -263,7 +269,11 @@ export function getEffortLevelForDisplay(
   model: string,
   level: EffortLevel,
 ): EffortLevel | OpenAIEffortLevel {
-  return modelUsesOpenAIEffort(model) && level === 'max' ? 'xhigh' : level
+  return modelUsesOpenAIEffort(model) &&
+    supportsCodexReasoningEffort(model) &&
+    level === 'max'
+    ? 'xhigh'
+    : level
 }
 
 /**

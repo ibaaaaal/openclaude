@@ -195,6 +195,9 @@ function readNestedString(
 function parseReasoningEffort(value: string | undefined): ReasoningEffort | undefined {
   if (!value) return undefined
   const normalized = value.trim().toLowerCase()
+  if (normalized === 'max') {
+    return 'xhigh'
+  }
   if (normalized === 'low' || normalized === 'medium' || normalized === 'high' || normalized === 'xhigh') {
     return normalized
   }
@@ -251,16 +254,19 @@ function parseModelDescriptor(model: string): ModelDescriptor {
   const alias = baseModel.toLowerCase() as CodexAlias
   const aliasConfig = CODEX_ALIAS_MODELS[alias]
   const resolvedBaseModel = aliasConfig?.model ?? baseModel
-  const reasoning =
+  const reasoningEffort =
     parseReasoningEffort(params.get('reasoning') ?? undefined) ??
     (aliasConfig?.reasoningEffort
-      ? { effort: aliasConfig.reasoningEffort }
+      ? aliasConfig.reasoningEffort
       : undefined)
+  const reasoning = reasoningEffort && supportsCodexReasoningEffort(resolvedBaseModel)
+    ? { effort: reasoningEffort }
+    : undefined
 
   return {
     raw: trimmed,
     baseModel: resolvedBaseModel,
-    reasoning: typeof reasoning === 'string' ? { effort: reasoning } : reasoning,
+    reasoning,
   }
 }
 
